@@ -50,8 +50,71 @@ export function StoreProvider({ children }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 300);
-    return () => clearTimeout(timer);
+    let cancelled = false;
+
+    const loadProductsFromBackend = async () => {
+      try {
+        setLoading(true);
+        setError('');
+
+        const [productsResponse, categoriesResponse] = await Promise.all([
+          fetch('http://127.0.0.1:8000/api/products'),
+          fetch('http://127.0.0.1:8000/api/categories'),
+        ]);
+
+        if (!productsResponse.ok || !categoriesResponse.ok) {
+          throw new Error('Unable to load products from the backend.');
+        }
+
+        const backendProducts = await productsResponse.json();
+        const backendCategories = await categoriesResponse.json();
+        const categoryNames = Object.fromEntries(
+          backendCategories.map((category) => [category.id, category.name]),
+        );
+
+        const normalizedProducts = backendProducts.map((product) => ({
+          id: product.id,
+          createdAt: product.created_at || new Date().toISOString(),
+          name: product.name,
+          category: categoryNames[product.category_id] || 'Uncategorized',
+          price: Number(product.price),
+          description: product.description || '',
+          fabric: 'Not specified',
+          colours: product.colors
+            ? product.colors.split(',').map((colour) => colour.trim()).filter(Boolean)
+            : [],
+          sizes: product.sizes
+            ? product.sizes.split(',').map((size) => size.trim()).filter(Boolean)
+            : ['Free Size'],
+          stock: Number(product.stock_quantity),
+          inStock: product.is_available && Number(product.stock_quantity) > 0,
+          newArrival: false,
+          image:
+            product.image_url ||
+            DEFAULT_PRODUCTS[0]?.image ||
+            'https://placehold.co/600x800?text=ManuStore',
+        }));
+
+        if (!cancelled) {
+          setProducts(normalizedProducts);
+        }
+      } catch (apiError) {
+        if (!cancelled) {
+          setError(apiError.message);
+          setProducts(DEFAULT_PRODUCTS);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadProductsFromBackend();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -148,7 +211,6 @@ export function StoreProvider({ children }) {
       password,
       role: 'customer',
     };
-
     setCustomers((prev) => [...prev, newCustomer]);
     setCurrentUser(newCustomer);
     setError('');
