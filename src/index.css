@@ -1,0 +1,143 @@
+@import 'tailwindcss';
+
+:root {
+  --burgundy: #5b1f2d;
+  --burgundy-dark: #38131d;
+  --cream: #f7f1ea;
+  --white: #fffdfb;
+  --gold: #d6b36a;
+  --gold-soft: #f4e6b7;
+  --brown: #432528;
+  --muted: #665654;
+  --line: rgba(91, 31, 45, 0.12);
+  --shadow: 0 18px 40px rgba(63, 21, 28, 0.12);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  font-family: Inter, 'Segoe UI', sans-serif;
+  background: var(--cream);
+  color: var(--brown);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #fdfaf6 0%, #f7f1ea 100%);
+}
+
+.card-surface {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(4px);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+
+.store-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  padding: 0.8rem 1.4rem;
+  background: var(--burgundy);
+  color: var(--white);
+  border: 1px solid transparent;
+  font-weight: 600;
+  transition: 0.2s ease;
+  cursor: pointer;
+}
+
+.store-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px rgba(91, 31, 45, 0.18);
+}
+
+.store-button.secondary {
+  background: transparent;
+  color: var(--burgundy);
+  border-color: rgba(91, 31, 45, 0.24);
+}
+
+.store-button.ghost {
+  background: rgba(214, 179, 106, 0.14);
+  color: var(--burgundy);
+  border-color: rgba(214, 179, 106, 0.4);
+}
+
+.section-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin-bottom: 1rem;
+  color: var(--burgundy-dark);
+}
+
+.text-gold {
+  color: var(--gold);
+}
+
+.burgundy-bg {
+  background: var(--burgundy);
+}
+
+.cream-bg {
+  background: var(--cream);
+}
+
+.gold-soft-bg {
+  background: rgba(214, 179, 106, 0.15);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.status-instock {
+  background: rgba(22, 163, 74, 0.1);
+  color: #166534;
+}
+
+.status-outstock {
+  background: rgba(220, 38, 38, 0.1);
+  color: #991b1b;
+}
+
+.range-input {
+  width: 100%;
+  accent-color: var(--burgundy);
+}
+
+@media (max-width: 640px) {
+  .section-title {
+    font-size: 1.5rem;
+  }
+}
