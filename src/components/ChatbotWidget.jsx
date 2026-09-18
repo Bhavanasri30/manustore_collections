@@ -1,227 +1,201 @@
-import { useMemo, useState } from 'react';
-import { MessageCircle, Send, X } from 'lucide-react';
-import { useStore } from '../context/StoreContext';
+import { useEffect, useRef, useState } from 'react';
+import { LoaderCircle, MessageCircle, Send, X } from 'lucide-react';
+
+
+const API_URL = 'http://127.0.0.1:8000/api/chat';
 
 const quickReplies = [
-  'What is the price of Saffron Silk Saree?',
-  'Show me new arrivals',
-  'How do I track my order?',
-  'How do I return a product?',
+  'What products are available?',
+  'What is the price of the Blue Floral Cotton Kurti?',
+  'Which sizes are available?',
+  'How can I place an order?',
 ];
 
+const welcomeMessage = {
+  from: 'bot',
+  text: 'Hi! I am the ManuStore AI assistant. Ask me about products, prices, stock, sizes, delivery, or orders.',
+  status: 'welcome',
+};
+
+
 export default function ChatbotWidget() {
-  const { products } = useStore();
   const [open, setOpen] = useState(false);
-  const [isTyping, setIsTyping] = useState(false);
-  const [messages, setMessages] = useState([
-    {
-      from: 'bot',
-      text: 'Hi! I can help with product details, stock, orders, and return questions.',
-    },
-  ]);
   const [input, setInput] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [messages, setMessages] = useState([welcomeMessage]);
+  const messagesEndRef = useRef(null);
 
-  const productIndex = useMemo(
-    () =>
-      products.map((product) => ({
-        name: product.name.toLowerCase(),
-        category: product.category.toLowerCase(),
-        product,
-      })),
-    [products],
-  );
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages, isTyping]);
 
-  const findProduct = (query) => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return null;
-
-    const directMatch = productIndex.find(({ name }) => name.includes(normalized));
-    if (directMatch) return directMatch.product;
-
-    const categoryMatch = productIndex.find(({ category }) => category.includes(normalized));
-    return categoryMatch ? categoryMatch.product : null;
+  const openNewChat = () => {
+    setMessages([welcomeMessage]);
+    setInput('');
+    setIsTyping(false);
+    setOpen(true);
   };
 
-  const answerQuestion = (prompt) => {
-    const normalized = prompt.toLowerCase().trim();
-
-    if (!normalized) {
-      return 'Please ask a question about products, stock, categories, or orders.';
+  const toggleChat = () => {
+    if (open) {
+      setOpen(false);
+      return;
     }
-
-    if (['hi', 'hello', 'hey', 'good morning', 'good evening'].some((word) => normalized.includes(word))) {
-      return 'Hello! I can help you with product details, pricing, stock, order updates, and returns.';
-    }
-
-    if (normalized.includes('thank you') || normalized.includes('thanks')) {
-      return 'You’re welcome! I’m happy to help with your shopping questions.';
-    }
-
-    if (normalized.includes('what can you do') || normalized.includes('help me')) {
-      return 'I can help with product prices, new arrivals, stock status, size availability, order tracking, returns, and recommendations.';
-    }
-
-    if (normalized.includes('how to order') || normalized.includes('order')) {
-      return 'Browse the catalog, choose a size, add to cart, and proceed to checkout. You can then complete the form and place your order.';
-    }
-
-    if (normalized.includes('track') || normalized.includes('tracking')) {
-      return 'Go to My Orders and open the order you want to track. The status will update through Order Placed → Confirmed → Packed → Shipped → Delivered.';
-    }
-
-    if (normalized.includes('return') || normalized.includes('exchange')) {
-      return 'Once your order is delivered, you can request a return or exchange from My Orders. The request is saved and sent to the store owner for review.';
-    }
-
-    if (normalized.includes('shipping') || normalized.includes('delivery')) {
-      return 'We usually process orders quickly and update the shipping status in My Orders once the item is on the way.';
-    }
-
-    if (normalized.includes('new arrival') || normalized.includes('new arrivals')) {
-      const arrivals = products.filter((product) => product.newArrival).map((p) => p.name);
-      return arrivals.length ? `New arrivals include: ${arrivals.join(', ')}.` : 'There are no new arrivals right now.';
-    }
-
-    if (normalized.includes('recommend') || normalized.includes('best') || normalized.includes('popular')) {
-      const featured = products.filter((product) => product.newArrival || product.inStock).slice(0, 3);
-      if (!featured.length) {
-        return 'I recommend checking the latest arrivals and best-selling festive picks in our collection.';
-      }
-      return `My top picks right now are ${featured.map((product) => product.name).join(', ')}.`;
-    }
-
-    if (normalized.includes('category') || normalized.includes('categories')) {
-      return `Available categories: ${['Sarees', 'Half Sarees', 'Kurtas', 'Anarkalis', 'Frocks'].join(', ')}.`;
-    }
-
-    if (normalized.includes('saree') || normalized.includes('half saree') || normalized.includes('kurta') || normalized.includes('anarkali') || normalized.includes('frock')) {
-      const product = findProduct(normalized);
-      if (product) {
-        return `${product.name} is a ${product.category} product. It is priced at ₹${product.price.toLocaleString('en-IN')} and currently ${product.inStock ? 'in stock' : 'out of stock'} with ${product.stock} items available.`;
-      }
-    }
-
-    if (normalized.includes('stock') || normalized.includes('available')) {
-      const product = findProduct(normalized.replace(/stock|available|size|price|category/g, '').trim());
-      if (product) {
-        return `${product.name} has ${product.stock} items in stock. ${product.inStock ? 'Available now.' : 'Currently out of stock.'}`;
-      }
-      return 'I don’t have verified information about that yet. Please contact the store to confirm.';
-    }
-
-    if (normalized.includes('size') || normalized.includes('sizes')) {
-      const product = findProduct(normalized.replace(/size|sizes|available/g, '').trim());
-      if (product) {
-        return `${product.name} is available in sizes: ${product.sizes.join(', ')}.`;
-      }
-      return 'I don’t have verified information about that yet. Please contact the store to confirm.';
-    }
-
-    if (normalized.includes('price') || normalized.includes('cost') || normalized.includes('how much')) {
-      const product = findProduct(normalized.replace(/price|cost|how much is|what is the price of|how much does|get me the price of/g, '').trim());
-      if (product) {
-        return `${product.name} is priced at ₹${product.price.toLocaleString('en-IN')}.`;
-      }
-      return 'I can help with pricing for specific products. Try asking for a product name like “Saffron Silk Saree”.';
-    }
-
-    const product = findProduct(normalized);
-    if (product) {
-      return `${product.name} is a ${product.category} product. It is priced at ₹${product.price.toLocaleString('en-IN')} and currently ${product.inStock ? 'in stock' : 'out of stock'} with ${product.stock} items available.`;
-    }
-
-    const categoryMatch = products.find((product) => normalized.includes(product.category.toLowerCase()));
-    if (categoryMatch) {
-      const categoryProducts = products.filter((product) => product.category === categoryMatch.category);
-      return `${categoryMatch.category} includes ${categoryProducts.map((product) => product.name).join(', ')}.`;
-    }
-
-    return 'I can help with style recommendations, prices, stock, sizes, returns, and order questions. Try asking about a specific product or category.';
+    openNewChat();
   };
 
-  const sendMessage = () => {
-    const trimmed = input.trim();
-    if (!trimmed) return;
+  const sendMessage = async (messageText = input) => {
+    const prompt = messageText.trim();
+    if (!prompt || isTyping) return;
 
-    const userMessage = { from: 'user', text: trimmed };
-
-    setMessages((prev) => [...prev, userMessage]);
+    setMessages((previous) => [
+      ...previous,
+      { from: 'user', text: prompt },
+    ]);
     setInput('');
     setIsTyping(true);
 
-    window.setTimeout(() => {
-      setMessages((prev) => [...prev, { from: 'bot', text: answerQuestion(trimmed) }]);
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message: prompt }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null);
+        throw new Error(errorBody?.detail || 'The chatbot request failed.');
+      }
+
+      const data = await response.json();
+      setMessages((previous) => [
+        ...previous,
+        {
+          from: 'bot',
+          text: data.answer,
+          status: data.status,
+        },
+      ]);
+    } catch (error) {
+      setMessages((previous) => [
+        ...previous,
+        {
+          from: 'bot',
+          text: 'I could not connect to the ManuStore assistant. Please make sure the backend is running and try again.',
+          status: 'error',
+        },
+      ]);
+      console.error(error);
+    } finally {
       setIsTyping(false);
-    }, 220);
+    }
+  };
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    sendMessage();
   };
 
   return (
-    <div className="fixed bottom-5 left-5 z-50">
-      {open ? (
-        <div className="w-[320px] overflow-hidden rounded-[26px] border border-[#eadbc7] bg-[#fffdfb] shadow-2xl">
-          <div className="flex items-center justify-between bg-[#5b1f2d] px-4 py-3 text-white">
-            <div className="flex items-center gap-2 font-semibold">
-              <MessageCircle size={18} />
-              Store Assistant
+    <div className="fixed bottom-5 right-5 z-50">
+      {open && (
+        <section className="mb-4 flex h-[520px] min-h-0 w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[28px] border border-[#eadbc7] bg-white shadow-2xl">
+          <header className="flex items-center justify-between bg-[#5b1f2d] px-5 py-4 text-white">
+            <div>
+              <h2 className="font-bold">ManuStore AI</h2>
+              <p className="text-xs text-white/75">RAG shopping assistant</p>
             </div>
-            <button type="button" onClick={() => setOpen(false)} className="text-white">
-              <X size={18} />
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close chatbot"
+              className="rounded-full p-2 transition hover:bg-white/10"
+            >
+              <X size={20} />
             </button>
-          </div>
+          </header>
 
-          <div className="flex max-h-[320px] flex-col gap-3 bg-[#f7f1ea] p-3">
-            {messages.map((msg, index) => (
-              <div key={`${msg.from}-${index}`} className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${msg.from === 'user' ? 'ml-auto bg-[#5b1f2d] text-white' : 'bg-white text-[#4a2b30]'}`}>
-                {msg.text}
+          <div
+            className="min-h-0 flex-1 space-y-3 overflow-y-scroll bg-[#fffaf5] p-4"
+            style={{
+              scrollbarWidth: 'thin',
+              scrollbarColor: '#5b1f2d #f7ebd7',
+            }}
+          >
+            {messages.map((message, index) => (
+              <div
+                key={`${message.from}-${index}`}
+                className={`flex ${message.from === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                    message.from === 'user'
+                      ? 'rounded-br-md bg-[#5b1f2d] text-white'
+                      : 'rounded-bl-md border border-[#eadbc7] bg-white text-[#463535]'
+                  }`}
+                >
+                  {message.text}
+                </div>
               </div>
             ))}
 
             {isTyping && (
-              <div className="max-w-[85%] rounded-2xl bg-white px-3 py-2 text-sm text-[#5b1f2d]">
-                Typing...
+              <div className="flex justify-start">
+                <div className="flex items-center gap-2 rounded-2xl rounded-bl-md border border-[#eadbc7] bg-white px-4 py-3 text-sm text-[#6b5757]">
+                  <LoaderCircle size={16} className="animate-spin" />
+                  Searching ManuStore...
+                </div>
               </div>
             )}
+            <div ref={messagesEndRef} />
+          </div>
 
-            <div className="flex flex-wrap gap-2">
+          <div className="border-t border-[#eadbc7] bg-white p-3">
+            <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
               {quickReplies.map((reply) => (
                 <button
                   key={reply}
                   type="button"
-                  onClick={() => setInput(reply)}
-                  className="rounded-full border border-[#d9c7b9] bg-white px-2 py-1 text-[11px] text-[#5b1f2d]"
+                  disabled={isTyping}
+                  onClick={() => sendMessage(reply)}
+                  className="shrink-0 rounded-full border border-[#d8c3b5] bg-[#fffdfb] px-3 py-1.5 text-xs font-medium text-[#5b1f2d] disabled:opacity-50"
                 >
                   {reply}
                 </button>
               ))}
             </div>
-          </div>
 
-          <div className="flex gap-2 border-t border-[#eadbc7] bg-white p-3">
-            <input
-              type="text"
-              value={input}
-              onChange={(event) => setInput(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') sendMessage();
-              }}
-              placeholder="Ask about products..."
-              className="flex-1 rounded-full border border-[#d9c7b9] bg-[#f9f4ef] px-3 py-2 text-sm outline-none"
-            />
-            <button type="button" onClick={sendMessage} className="rounded-full bg-[#5b1f2d] p-2 text-white">
-              <Send size={16} />
-            </button>
+            <form onSubmit={handleSubmit} className="flex gap-2">
+              <input
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder="Ask about ManuStore..."
+                disabled={isTyping}
+                className="min-w-0 flex-1 rounded-full border border-[#d8c3b5] bg-[#fffdfb] px-4 py-2.5 text-sm outline-none focus:border-[#5b1f2d]"
+              />
+              <button
+                type="submit"
+                disabled={!input.trim() || isTyping}
+                aria-label="Send message"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-[#5b1f2d] text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Send size={18} />
+              </button>
+            </form>
           </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="flex h-14 w-14 items-center justify-center rounded-full bg-[#5b1f2d] text-white shadow-lg shadow-[#5b1f2d]/25"
-          aria-label="Open chat assistant"
-        >
-          <MessageCircle size={24} />
-        </button>
+        </section>
       )}
+
+      <button
+        type="button"
+        onClick={toggleChat}
+        aria-label={open ? 'Close chatbot' : 'Open chatbot'}
+        className="ml-auto flex h-14 w-14 items-center justify-center rounded-full bg-[#5b1f2d] text-white shadow-xl transition hover:scale-105"
+      >
+        {open ? <X size={24} /> : <MessageCircle size={25} />}
+      </button>
     </div>
   );
 }

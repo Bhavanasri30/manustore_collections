@@ -10,7 +10,6 @@ class CategoryCreate(BaseModel):
 
 class CategoryResponse(CategoryCreate):
     id: int
-
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -40,7 +39,6 @@ class ProductUpdate(BaseModel):
 
 class ProductResponse(ProductCreate):
     id: int
-
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -51,23 +49,21 @@ class KnowledgeCreate(BaseModel):
 
 
 class KnowledgeUpdate(BaseModel):
-    title: Optional[str] = Field(
-        default=None,
-        min_length=2,
-        max_length=200,
-    )
-    content: Optional[str] = Field(
-        default=None,
-        min_length=5,
-    )
-    document_type: Optional[str] = Field(
-        default=None,
-        min_length=2,
-        max_length=50,
-    )
+    title: Optional[str] = Field(default=None, min_length=2, max_length=200)
+    content: Optional[str] = Field(default=None, min_length=5)
+    document_type: Optional[str] = Field(default=None, min_length=2, max_length=50)
 
 
 class KnowledgeResponse(KnowledgeCreate):
     id: int
-
     model_config = ConfigDict(from_attributes=True)
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(min_length=2, max_length=1000)
+
+
+class ChatResponse(BaseModel):
+    answer: str
+    status: str
+    sources: list[str]

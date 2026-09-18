@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from backend.app import models, schemas
 from backend.app.database import get_db
+from backend.app.rag_service import answer_question, sync_vector_store
 
 
 router = APIRouter(prefix="/api", tags=["ManuStore"])
@@ -228,3 +229,20 @@ def delete_knowledge(
         "message": "Knowledge document deleted successfully",
         "document_id": document_id,
     }
+
+
+@router.post("/rag/sync")
+def sync_rag_data(db: Session = Depends(get_db)):
+    indexed_documents = sync_vector_store(db)
+    return {
+        "message": "RAG data synchronized successfully",
+        "indexed_documents": indexed_documents,
+    }
+
+
+@router.post(
+    "/chat",
+    response_model=schemas.ChatResponse,
+)
+def chat_with_manustore(chat: schemas.ChatRequest):
+    return answer_question(chat.message)

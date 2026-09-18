@@ -1,5 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from 'firebase/auth';
+import { auth } from '../firebase';
+import {
   DEFAULT_ORDERS,
   DEFAULT_OWNERS,
   DEFAULT_PRODUCTS,
@@ -8,6 +17,7 @@ import {
 } from '../data';
 
 const StoreContext = createContext();
+const API_BASE = 'http://127.0.0.1:8000/api';
 
 const normalizeEmail = (value = '') => value.trim().toLowerCase();
 
@@ -41,6 +51,7 @@ export function StoreProvider({ children }) {
   const [products, setProducts] = useState(() =>
     readFromStorage(STORAGE_KEYS.products, DEFAULT_PRODUCTS),
   );
+  const [categories, setCategories] = useState([]);
   const [cart, setCart] = useState(() => readFromStorage(STORAGE_KEYS.cart, []));
   const [orders, setOrders] = useState(() => readFromStorage(STORAGE_KEYS.orders, DEFAULT_ORDERS));
   const [returnsData, setReturnsData] = useState(() =>
@@ -48,6 +59,25 @@ export function StoreProvider({ children }) {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (!firebaseUser) {
+        setCurrentUser(null);
+        return;
+      }
+
+      const role = localStorage.getItem(`manustore_role_${firebaseUser.uid}`) || 'customer';
+      setCurrentUser({
+        id: firebaseUser.uid,
+        name: firebaseUser.displayName || 'ManuStore User',
+        email: firebaseUser.email,
+        role,
+      });
+    });
+
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -58,8 +88,8 @@ export function StoreProvider({ children }) {
         setError('');
 
         const [productsResponse, categoriesResponse] = await Promise.all([
-          fetch('http://127.0.0.1:8000/api/products'),
-          fetch('http://127.0.0.1:8000/api/categories'),
+          fetch(`${API_BASE}/products`),
+          fetch(`${API_BASE}/categories`),
         ]);
 
         if (!productsResponse.ok || !categoriesResponse.ok) {
@@ -68,6 +98,7 @@ export function StoreProvider({ children }) {
 
         const backendProducts = await productsResponse.json();
         const backendCategories = await categoriesResponse.json();
+        setCategories(backendCategories);
         const categoryNames = Object.fromEntries(
           backendCategories.map((category) => [category.id, category.name]),
         );
@@ -145,187 +176,142 @@ export function StoreProvider({ children }) {
     writeToStorage(STORAGE_KEYS.returns, returnsData);
   }, [returnsData]);
 
-  useEffect(() => {
-    if (!currentUser) return;
-
-    const isValidUser =
-      (currentUser.role === 'owner' &&
-        owners.some((owner) => owner.email.toLowerCase() === normalizeEmail(currentUser.email))) ||
-      (currentUser.role === 'customer' &&
-        customers.some((customer) => customer.email.toLowerCase() === normalizeEmail(currentUser.email)));
-
-    if (!isValidUser) {
-      setCurrentUser(null);
-    }
-  }, [owners, customers, currentUser]);
-
-  const registerOwner = ({ name, email, password }) => {
-    const normalizedEmail = normalizeEmail(email);
-    const exists = owners.some((owner) => owner.email.toLowerCase() === normalizedEmail);
-    if (exists) {
-      throw new Error('An owner account with this email already exists.');
-    }
-
-    const newOwner = {
-      id: Date.now(),
-      name,
-      email: normalizedEmail,
+  const registerFirebaseUser = async ({ name, email, password, role }) => {
+    setError('');
+    const credential = await createUserWithEmailAndPassword(
+      auth,
+      normalizeEmail(email),
       password,
-      role: 'owner',
-    };
-
-    setOwners((prev) => [...prev, newOwner]);
-    setCurrentUser(newOwner);
-    setError('');
-    return newOwner;
-  };
-
-  const loginOwner = ({ email, password }) => {
-    const normalizedEmail = normalizeEmail(email);
-    const owner = owners.find(
-      (candidate) =>
-        candidate.email.toLowerCase() === normalizedEmail && candidate.password === password,
     );
+    await updateProfile(credential.user, { displayName: name.trim() });
+    localStorage.setItem(`manustore_role_${credential.user.uid}`, role);
 
-    if (!owner) {
-      throw new Error('Invalid owner email or password.');
-    }
-
-    setCurrentUser({ ...owner, role: 'owner' });
-    setError('');
-    return owner;
+    const user = {
+      id: credential.user.uid,
+      name: name.trim(),
+      email: credential.user.email,
+      role,
+    };
+    setCurrentUser(user);
+    return user;
   };
 
-  const registerCustomer = ({ name, email, password }) => {
-    const normalizedEmail = normalizeEmail(email);
-    const exists = customers.some((customer) => customer.email.toLowerCase() === normalizedEmail);
-
-    if (exists) {
-      throw new Error('A customer account with this email already exists.');
-    }
-
-    const newCustomer = {
-      id: Date.now(),
-      name,
-      email: normalizedEmail,
+  const loginFirebaseUser = async ({ email, password, role }) => {
+    setError('');
+    const credential = await signInWithEmailAndPassword(
+      auth,
+      normalizeEmail(email),
       password,
-      role: 'customer',
-    };
-    setCustomers((prev) => [...prev, newCustomer]);
-    setCurrentUser(newCustomer);
-    setError('');
-    return newCustomer;
-  };
-
-  const loginCustomer = ({ email, password }) => {
-    const normalizedEmail = normalizeEmail(email);
-    const customer = customers.find(
-      (candidate) =>
-        candidate.email.toLowerCase() === normalizedEmail && candidate.password === password,
     );
-
-    if (!customer) {
-      throw new Error('Invalid customer email or password.');
+    const storedRole = localStorage.getItem(`manustore_role_${credential.user.uid}`);
+    if (storedRole && storedRole !== role) {
+      await signOut(auth);
+      throw new Error(`This account is registered as a ${storedRole}.`);
     }
+    localStorage.setItem(`manustore_role_${credential.user.uid}`, role);
 
-    setCurrentUser({ ...customer, role: 'customer' });
-    setError('');
-    return customer;
-  };
-
-  const resetPassword = ({ role, email, newPassword }) => {
-    const normalizedEmail = normalizeEmail(email);
-    const safePassword = newPassword.trim();
-
-    if (!normalizedEmail) {
-      throw new Error('Please enter your email address.');
-    }
-
-    if (!safePassword || safePassword.length < 6) {
-      throw new Error('Password must be at least 6 characters long.');
-    }
-
-    if (role === 'owner') {
-      const owner = owners.find((candidate) => candidate.email.toLowerCase() === normalizedEmail);
-      if (!owner) {
-        throw new Error('No owner account found with that email.');
-      }
-
-      setOwners((prev) =>
-        prev.map((candidate) =>
-          candidate.email.toLowerCase() === normalizedEmail
-            ? { ...candidate, password: safePassword }
-            : candidate,
-        ),
-      );
-
-      if (currentUser?.role === 'owner' && currentUser.email.toLowerCase() === normalizedEmail) {
-        setCurrentUser((prev) => (prev ? { ...prev, password: safePassword } : prev));
-      }
-
-      setError('');
-      return { ...owner, password: safePassword };
-    }
-
-    const customer = customers.find((candidate) => candidate.email.toLowerCase() === normalizedEmail);
-    if (!customer) {
-      throw new Error('No customer account found with that email.');
-    }
-
-    setCustomers((prev) =>
-      prev.map((candidate) =>
-        candidate.email.toLowerCase() === normalizedEmail
-          ? { ...candidate, password: safePassword }
-          : candidate,
-      ),
-    );
-
-    if (currentUser?.role === 'customer' && currentUser.email.toLowerCase() === normalizedEmail) {
-      setCurrentUser((prev) => (prev ? { ...prev, password: safePassword } : prev));
-    }
-
-    setError('');
-    return { ...customer, password: safePassword };
-  };
-
-  const logout = () => setCurrentUser(null);
-
-  const addProduct = (productData) => {
-    const newProduct = {
-      ...productData,
-      id: productData.id || `MS-${Date.now()}`,
-      createdAt: productData.createdAt || new Date().toISOString(),
-      price: Number(productData.price),
-      stock: Number(productData.stock),
-      sizes: Array.isArray(productData.sizes) ? productData.sizes : [productData.sizes],
-      colours: Array.isArray(productData.colours) ? productData.colours : [productData.colours],
-      inStock: Number(productData.stock) > 0,
-      newArrival: Boolean(productData.newArrival),
+    const user = {
+      id: credential.user.uid,
+      name: credential.user.displayName || 'ManuStore User',
+      email: credential.user.email,
+      role,
     };
+    setCurrentUser(user);
+    return user;
+  };
 
+  const registerOwner = (data) => registerFirebaseUser({ ...data, role: 'owner' });
+  const loginOwner = (data) => loginFirebaseUser({ ...data, role: 'owner' });
+  const registerCustomer = (data) => registerFirebaseUser({ ...data, role: 'customer' });
+  const loginCustomer = (data) => loginFirebaseUser({ ...data, role: 'customer' });
+
+  const resetPassword = async ({ email }) => {
+    const normalizedEmail = normalizeEmail(email);
+    if (!normalizedEmail) throw new Error('Please enter your email address.');
+    await sendPasswordResetEmail(auth, normalizedEmail);
+    setError('');
+  };
+
+  const logout = async () => {
+    await signOut(auth);
+    setCurrentUser(null);
+  };
+
+  const ensureCategoryId = async (name) => {
+    const category = categories.find(
+      (item) => item.name.toLowerCase() === String(name).toLowerCase(),
+    );
+    if (category) return category.id;
+
+    const response = await fetch(`${API_BASE}/categories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, description: `${name} products` }),
+    });
+    if (!response.ok) throw new Error((await response.json()).detail || 'Could not create category.');
+    const newCategory = await response.json();
+    setCategories((prev) => [...prev, newCategory]);
+    return newCategory.id;
+  };
+
+  const toApiProduct = async (productData) => ({
+    name: productData.name,
+    description: productData.description || '',
+    price: Number(productData.price),
+    stock_quantity: Number(productData.stock),
+    sizes: (productData.sizes || []).join(', '),
+    colors: (productData.colours || []).join(', '),
+    image_url: productData.image || null,
+    is_available: Boolean(productData.inStock) && Number(productData.stock) > 0,
+    category_id: await ensureCategoryId(productData.category),
+  });
+
+  const fromApiProduct = (product) => {
+    const category = categories.find((item) => item.id === product.category_id);
+    return {
+      id: product.id,
+      createdAt: new Date().toISOString(),
+      name: product.name,
+      category: category?.name || 'Uncategorized',
+      price: Number(product.price),
+      description: product.description || '',
+      fabric: '',
+      colours: product.colors?.split(',').map((item) => item.trim()).filter(Boolean) || [],
+      sizes: product.sizes?.split(',').map((item) => item.trim()).filter(Boolean) || [],
+      stock: Number(product.stock_quantity),
+      image: product.image_url || 'https://placehold.co/600x800?text=ManuStore',
+      newArrival: false,
+      inStock: product.is_available && Number(product.stock_quantity) > 0,
+    };
+  };
+
+  const addProduct = async (productData) => {
+    const response = await fetch(`${API_BASE}/products`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(await toApiProduct(productData)),
+    });
+    if (!response.ok) throw new Error((await response.json()).detail || 'Could not add product.');
+    const newProduct = fromApiProduct(await response.json());
     setProducts((prev) => [newProduct, ...prev]);
     return newProduct;
   };
 
-  const updateProduct = (productId, productData) => {
-    setProducts((prev) =>
-      prev.map((product) =>
-        product.id === productId
-          ? {
-              ...product,
-              ...productData,
-              price: Number(productData.price ?? product.price),
-              stock: Number(productData.stock ?? product.stock),
-              sizes: productData.sizes ?? product.sizes,
-              colours: productData.colours ?? product.colours,
-              inStock: Number(productData.stock ?? product.stock) > 0,
-            }
-          : product,
-      ),
-    );
+  const updateProduct = async (productId, productData) => {
+    const response = await fetch(`${API_BASE}/products/${productId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(await toApiProduct(productData)),
+    });
+    if (!response.ok) throw new Error((await response.json()).detail || 'Could not update product.');
+    const updatedProduct = fromApiProduct(await response.json());
+    setProducts((prev) => prev.map((item) => (item.id === productId ? updatedProduct : item)));
+    return updatedProduct;
   };
 
-  const deleteProduct = (productId) => {
+  const deleteProduct = async (productId) => {
+    const response = await fetch(`${API_BASE}/products/${productId}`, { method: 'DELETE' });
+    if (!response.ok) throw new Error((await response.json()).detail || 'Could not delete product.');
     setProducts((prev) => prev.filter((product) => product.id !== productId));
     setCart((prev) => prev.filter((item) => item.productId !== productId));
   };
