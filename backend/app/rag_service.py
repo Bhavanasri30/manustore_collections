@@ -176,7 +176,7 @@ def retrieve_context(question: str, limit: int = 4) -> list[str]:
     return [
         document
         for document, distance in zip(documents, distances)
-        if distance <= 0.75
+        if distance <= 0.45
     ]
 
 
